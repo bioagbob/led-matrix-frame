@@ -43,6 +43,39 @@ It live‑exports your drawing as:
 
 ---
 
+## Example usage
+**Goal**: Show the characters "AZ" on the LED matrix.
+1. Draw characters on the 12x8 array
+2. Click Copy Hex
+<img width="600" alt="matrix_AZ" src="https://github.com/user-attachments/assets/426c2b6f-bfb9-498f-a7c8-b500e8882087" />
+
+3. Paste hex values into array variable
+```
+#include "Arduino_LED_Matrix.h"
+
+ArduinoLEDMatrix matrix;
+
+void setup() {
+
+  matrix.begin();
+
+  const uint32_t AZ[] = {
+    0x23E50288,
+    0x4888F908,
+    0xA08BE000
+  };
+
+  matrix.loadFrame(AZ);
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+
+}
+```
+5. Run code (see [Arduino Docs](https://docs.arduino.cc/tutorials/uno-r4-wifi/led-matrix/#how-to-write-a-frame) for help)
+<img width="500" alt="AZ_photo" src="https://github.com/user-attachments/assets/82d8c226-8777-4953-bfd5-ca7fcb523f98" />
+
 ## Data formats
 
 ### 12x8 array
