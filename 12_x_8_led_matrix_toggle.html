@@ -1,0 +1,264 @@
+<!--
+* AUTHOR: BioAgBob via ChatGPT-5  2025-09-30
+* Github.com/BioAgBob
+* Draw pixels for an led matrix to get copy and paste byte array and long int hex values for Arduino code.
+* Inspired by LED Matrix Editor https://ledmatrix-editor.arduino.cc
+* This is free and unencumbered software released into the public domain.
+* For more information, please refer to <https://unlicense.org>
+* 
+-->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>12x8 LED Matrix Frame Data</title>
+  <style>
+    :root{ --rows:8; --cols:12; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 24px; background:#f7f7f8; color:#111; }
+    h1 { font-size: 1.25rem; margin: 0 0 12px; }
+
+    .app { max-width: 760px; margin: 0 auto; background:#fff; border:1px solid #e6e6e6; border-radius: 14px; padding: 16px; box-shadow: 0 6px 24px rgba(0,0,0,.06); }
+
+    .toolbar { display:flex; gap:8px; align-items:center; flex-wrap: wrap; margin-bottom: 12px; }
+    .toolbar button { border:1px solid #ddd; background:#fafafa; padding:8px 12px; border-radius: 10px; cursor:pointer; font-weight: 600; }
+    .toolbar button:hover { background:#f0f0f0; }
+
+    .grid-wrap { width: 100%; }
+    .grid { 
+      --cell-size: min(48px, calc((100vw - 96px) / var(--cols))); /* responsive */
+      display: grid; 
+      grid-template-columns: repeat(var(--cols), var(--cell-size));
+      gap: 6px; 
+      padding: 6px; 
+      background: #f2f2f2; 
+      border: 1px solid #e6e6e6; 
+      border-radius: 12px;
+      justify-content: start;
+      overflow:auto;
+      touch-action: none; /* better pointer events on touch */
+    }
+    .cell { 
+      width: var(--cell-size);
+      aspect-ratio: 1 / 1; 
+      background: #fff; 
+      border: 1px solid #c9c9c9; 
+      border-radius: 6px; 
+      cursor: pointer; 
+      transition: transform .02s ease-in-out; 
+    }
+    .cell:focus { outline: 2px solid #2684ff; outline-offset: 1px; }
+    .cell.on { background: #000; border-color: #000; }
+    .cell:active { transform: scale(.98); }
+
+    .output { margin-top: 14px; display:grid; gap:14px; }
+    .output section { display:block; }
+    .output label { display:block; font-weight: 700; margin-bottom: 6px; }
+    pre { white-space: pre; background:#0b1021; color:#e9f0ff; border-radius: 10px; padding: 12px; overflow:auto; }
+
+    .import { display:flex; gap:8px; align-items:center; }
+    .import input { flex:1; padding:8px 10px; border-radius: 10px; border:1px solid #ddd; font-family: inherit; }
+
+    .hint { color:#666; font-size: .9rem; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1>12x8 LED Matrix Frame Data</h1>
+    <div class="toolbar">
+      <button id="clear">Clear</button>
+      <button id="invert">Invert</button>
+      <button id="copy">Copy Array</button>
+      <button id="copyHex">Copy Hex</button>
+    </div>
+    <div class="grid-wrap">
+      <div id="grid" class="grid" role="grid" aria-label="8 by 12 grid"></div>
+    </div>
+    <div class="output">
+      <section>
+        <label for="outputArray">Array (White = 0, Black = 1)</label>
+        <pre id="outputArray" aria-live="polite"></pre>
+      </section>
+      <section>
+        <label for="outputHex">Hex (3 × 32-bit longs, row-major, MSB first)</label>
+        <pre id="outputHex"></pre>
+      </section>
+      <section>
+        <label for="hexInput">Paste hex → populate grid</label>
+        <div class="import">
+          <input id="hexInput" type="text" placeholder="e.g., 0xE4594594, 0x5F459459, 0x45E77000" />
+          <button id="loadHex">Load Hex</button>
+        </div>
+        <div id="importMsg" class="hint" aria-live="polite"></div>
+      </section>
+      <div class="hint">Tip: Click a cell to toggle, or click-and-drag to paint. "Copy Array" copies the 8×12 list without trailing commas.</div>
+    </div>
+  </div>
+
+  <script>
+    const ROWS = 8, COLS = 12;
+    const grid = document.getElementById('grid');
+    const outArray = document.getElementById('outputArray');
+    const outHex = document.getElementById('outputHex');
+    const hexInput = document.getElementById('hexInput');
+    const importMsg = document.getElementById('importMsg');
+
+    // Matrix state
+    const state = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+
+    // Build grid
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.tabIndex = 0;
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+        cell.setAttribute('role', 'gridcell');
+        cell.setAttribute('aria-label', `Row ${r + 1}, Column ${c + 1}`);
+        grid.appendChild(cell);
+      }
+    }
+
+    // Toggle helpers
+    function setCell(el, value){
+      const r = +el.dataset.r, c = +el.dataset.c;
+      state[r][c] = value ? 1 : 0;
+      el.classList.toggle('on', state[r][c] === 1);
+    }
+
+    // Single-click + drag paint
+    let drawing = false, paintValue = null;
+    grid.addEventListener('pointerdown', (e) => {
+      if (!(e.target && e.target.classList.contains('cell'))) return;
+      e.preventDefault();
+      drawing = true;
+      const el = e.target;
+      const willBe = el.classList.contains('on') ? 0 : 1;
+      paintValue = willBe;
+      setCell(el, paintValue);
+      renderOutputs();
+    });
+    grid.addEventListener('pointerenter', (e) => {
+      if (!drawing) return;
+      if (!(e.target && e.target.classList.contains('cell'))) return;
+      setCell(e.target, paintValue);
+      renderOutputs();
+    }, true);
+    window.addEventListener('pointerup', () => { drawing = false; paintValue = null; });
+
+    // Buttons
+    document.getElementById('clear').addEventListener('click', () => {
+      document.querySelectorAll('.cell').forEach(el => el.classList.remove('on'));
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) state[r][c] = 0;
+      renderOutputs();
+    });
+
+    document.getElementById('invert').addEventListener('click', () => {
+      document.querySelectorAll('.cell').forEach(el => {
+        const r = +el.dataset.r, c = +el.dataset.c;
+        state[r][c] = state[r][c] ? 0 : 1;
+        el.classList.toggle('on', state[r][c] === 1);
+      });
+      renderOutputs();
+    });
+
+    document.getElementById('copy').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(outArray.textContent);
+        flashLabel('copy');
+      } catch (e) {
+        alert('Copy failed: ' + e.message);
+      }
+    });
+
+    document.getElementById('copyHex').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(outHex.textContent);
+        flashLabel('copyHex');
+      } catch (e) {
+        alert('Copy failed: ' + e.message);
+      }
+    });
+
+    document.getElementById('loadHex').addEventListener('click', () => {
+      const text = (hexInput.value || '').trim();
+      const tokens = text.match(/0x[0-9a-f]+|[0-9a-f]+/gi) || [];
+      const three = tokens.slice(0, 3);
+      if (three.length !== 3) {
+        setImportMsg('Please paste exactly three 32-bit hex values (e.g., 0xE4594594, 0x5F459459, 0x45E77000).');
+        return;
+      }
+      const values = [];
+      for (const t of three) {
+        const cleaned = t.replace(/^0x/i, '');
+        if (cleaned.length > 8 || !/^[0-9a-f]{1,8}$/i.test(cleaned)) {
+          setImportMsg('Each value must be up to 8 hex digits.');
+          return;
+        }
+        values.push(parseInt(cleaned, 16) >>> 0);
+      }
+
+      // Fill flat bits row-major, MSB-first per 32-bit long
+      const flat = new Array(ROWS * COLS).fill(0);
+      for (let g = 0; g < 3; g++) {
+        const v = values[g] >>> 0;
+        for (let i = 0; i < 32; i++) {
+          const bit = (v >>> (31 - i)) & 1;
+          flat[g*32 + i] = bit;
+        }
+      }
+
+      // Transfer to state and update cells
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          state[r][c] = flat[r*COLS + c];
+        }
+      }
+      document.querySelectorAll('.cell').forEach(el => {
+        const r = +el.dataset.r, c = +el.dataset.c;
+        el.classList.toggle('on', state[r][c] === 1);
+      });
+      renderOutputs();
+      setImportMsg('Loaded hex into grid.', true);
+    });
+
+    function flashLabel(id){
+      const btn = document.getElementById(id);
+      const original = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => (btn.textContent = original), 900);
+    }
+
+    function setImportMsg(msg, ok=false){
+      importMsg.textContent = msg;
+      importMsg.style.color = ok ? '#0a7d24' : '#666';
+    }
+
+    function renderOutputs(){
+      // 1) Text array (no trailing comma per line)
+      const arrayLines = state.map(row => ' ' + row.join(', '));
+      outArray.textContent = arrayLines.join('\n');
+
+      // 2) Hex longs (row-major, MSB-first within each 32-bit)
+      const flat = state.flat();
+      const hexVals = [];
+      for (let g = 0; g < 3; g++) {
+        let v = 0;
+        for (let i = 0; i < 32; i++) {
+          const bit = flat[g*32 + i] & 1;
+          v |= bit << (31 - i); // MSB-first
+        }
+        const u = (v >>> 0); // force unsigned 32-bit
+        hexVals.push('0x' + u.toString(16).toUpperCase().padStart(8,'0'));
+      }
+      outHex.textContent = hexVals.join(',\n');
+    }
+
+    // Initialize output
+    renderOutputs();
+  </script>
+</body>
+</html>
