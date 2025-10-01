@@ -4,7 +4,7 @@ A tiny, dependency‑free HTML app that lets you click (or click‑and‑drag) t
 
 It live‑exports your drawing as:
 
-* An **12x8 list** of comma‑separated **0/1** values (white = 0, black = 1).
+* An **[8][12]** array of comma‑separated **0/1** values (white = 0, black = 1).
 * **Three 32‑bit hex longs** representing the 96 bits (row‑major, MSB‑first within each 32‑bit word).
 * These values can be one-click copied for use in driving the 12x8 LED matrix on the Arduino UNO R4 or similar.
 
@@ -24,7 +24,21 @@ It live‑exports your drawing as:
 * **Clear:** Sets all cells to 0 (white).
 * **Invert:** Flips all bits.
 * **Copy Array:** Copies the 12x8 0/1 text block (no trailing commas).
+  * Paste into two-dimensional array
+    ```
+    byte frame[8][12] = {
+    <PASTE ARRAY VALUES HERE>
+    };
+    ```
+  * Use as parameter for ```matrix.renderBitmap(frame, 8, 12);```
 * **Copy Hex:** Copies the three 32‑bit words as hex (e.g., `0xE4594594, 0x5F459459, 0x45E77000`).
+  * Paste into long int array
+    ```
+    const uint32_t frame[] = {
+    <PASTE HEX VALUES HERE>
+    };
+    ```
+  * Use as parameter for ```matrix.loadFrame(frame);```
 * **Paste hex → Load:** Paste three 32‑bit hex values (comma/space separated; `0x` optional) and press **Load Hex** to fill the grid.
 
 ---
