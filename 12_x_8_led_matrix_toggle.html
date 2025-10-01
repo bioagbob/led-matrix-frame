@@ -239,8 +239,8 @@
 
     function renderOutputs(){
       // 1) Text array (no trailing comma per line)
-      const arrayLines = state.map(row => ' ' + row.join(', '));
-      outArray.textContent = arrayLines.join('\n');
+      const arrayLines = state.map(row => '{ ' + row.join(', ') + ' }');
+      outArray.textContent = arrayLines.join(',\n');
 
       // 2) Hex longs (row-major, MSB-first within each 32-bit)
       const flat = state.flat();
